@@ -17,7 +17,7 @@ To use:
 - Modify the rootfs.tar.gz file located at `/opt/images/Yocto/rootfs.tar.gz` on the first partition of the MicroSD card.
     - Set the root password in `/etc/shadow`
     - Add a `NetworkManager` configuration file at `/etc/NetworkManager/system-connections/<something>.nmconnection`
-    - Add your SSH key to `/etc/ssh/authorized_keys`
+    - Add your SSH key to `/etc/ssh/authorized_keys` (optionally, remove Eight Sleep's key while you're there)
 - Insert the MicroSD card
 - Insert the logic daughterboard
 - Reattach the antenna
@@ -26,3 +26,5 @@ To use:
 - Eventually it'll stop flashing green and connect to wifi. You should now be able to ssh into your device using the account `rewt`. You can also log in as `root` by logging in as `rewt`, typing `su` and entering the root password.
 
 You can now compile this program for the Pod 3: `cargo build --target aarch64-unknown-linux-musl` (musl is used so that a static binary will work). Copy it to your Pod over ssh and you should be able to run it, although you'll need to run `systemctl stop dac` as root first to shut down the stock `dac`, which listens on the relevant unix socket.
+
+You may want to disable Eight Sleep's updates and telemetry. You can do that with: `systemctl disable --now swupdate-progress swupdate defibrillator eight-kernel telegraf vector`.
