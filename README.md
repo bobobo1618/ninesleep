@@ -1,5 +1,7 @@
 # Overview
 
+**Warning**: This code is very new and immature. It works for me but requires technical know-how to use.
+
 This repository contains a program intended to replace the `dac` process on an Eight Sleep Pod 3, giving the user the ability to interact with the pod locally, without any interaction with Eight Sleep's servers.
 
 Clearly, this project is not endorsed by Eight Sleep. You're responsible for anything you do with your pod.
