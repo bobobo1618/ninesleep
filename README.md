@@ -27,4 +27,4 @@ To use:
 
 You can now compile this program for the Pod 3: `cargo build --target aarch64-unknown-linux-musl` (musl is used so that a static binary will work). Copy it to your Pod over ssh and you should be able to run it, although you'll need to run `systemctl stop dac` as root first to shut down the stock `dac`, which listens on the relevant unix socket.
 
-You may want to disable Eight Sleep's updates and telemetry. You can do that with: `systemctl disable --now swupdate-progress swupdate defibrillator eight-kernel telegraf vector`.
+You may want to disable Eight Sleep's updates and telemetry. You can do that with: `systemctl disable --now swupdate-progress swupdate defibrillator eight-kernel telegraf vector`. The `frankenfirmware` binary will still send data to `raw-api-upload.8slp.net`. If you want to deal with that, add `raw-api-upload.8slp.net` to your `/etc/hosts` file.
