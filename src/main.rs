@@ -8,6 +8,8 @@ use std::{
     sync::RwLock,
     time::Duration,
 };
+use cbor::{Encoder, ToCbor};
+use rustc_serialize::{json::Json, Encodable};
 
 #[get("/hello")]
 fn index(streamobj: &State<RwLock<UnixStream>>) -> String {
@@ -39,8 +41,14 @@ fn alarm(side: &str, data: &str, streamobj: &State<RwLock<UnixStream>>) -> Strin
         }
     };
 
+    let jsondata = Json::from_str(data).unwrap();
+    let cbordata = jsondata.to_cbor();
+    let mut cborencoder = Encoder::from_memory();
+    cbordata.encode(&mut cborencoder).unwrap();
+    let serializeddata = hex::encode(cborencoder.as_bytes());
+
     let mut stream = streamobj.write().unwrap();
-    let _ = stream.write(format!("{}\n{}\n\n", command, data).as_bytes());
+    let _ = stream.write(format!("{}\n{}\n\n", command, serializeddata).as_bytes());
     let _ = stream.set_read_timeout(Some(Duration::new(0, 50000000)));
     let mut result = String::new();
     let _ = stream.read_to_string(&mut result);
@@ -59,8 +67,14 @@ fn alarm_clear(streamobj: &State<RwLock<UnixStream>>) -> String {
 
 #[post("/settings", data = "<data>")]
 fn settings(data: &str, streamobj: &State<RwLock<UnixStream>>) -> String {
+    let jsondata = Json::from_str(data).unwrap();
+    let cbordata = jsondata.to_cbor();
+    let mut cborencoder = Encoder::from_memory();
+    cbordata.encode(&mut cborencoder).unwrap();
+    let serializeddata = hex::encode(cborencoder.as_bytes());
+
     let mut stream = streamobj.write().unwrap();
-    let _ = stream.write(format!("8\n{}\n\n", data).as_bytes());
+    let _ = stream.write(format!("8\n{}\n\n", serializeddata).as_bytes());
     let _ = stream.set_read_timeout(Some(Duration::new(0, 50000000)));
     let mut result = String::new();
     let _ = stream.read_to_string(&mut result);
