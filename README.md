@@ -1,3 +1,5 @@
+# Overview
+
 This repository contains a program intended to replace the `dac` process on an Eight Sleep Pod 3, giving the user the ability to interact with the pod locally, without any interaction with Eight Sleep's servers.
 
 Clearly, this project is not endorsed by Eight Sleep. You're responsible for anything you do with your pod.
@@ -28,3 +30,74 @@ To use:
 You can now compile this program for the Pod 3: `cargo build --target aarch64-unknown-linux-musl` (musl is used so that a static binary will work). Copy it to your Pod over ssh and you should be able to run it, although you'll need to run `systemctl stop dac` as root first to shut down the stock `dac`, which listens on the relevant unix socket.
 
 You may want to disable Eight Sleep's updates and telemetry. You can do that with: `systemctl disable --now swupdate-progress swupdate defibrillator eight-kernel telegraf vector`. The `frankenfirmware` binary will still send data to `raw-api-upload.8slp.net`. If you want to deal with that, add `raw-api-upload.8slp.net` to your `/etc/hosts` file.
+
+# API
+
+- `GET /hello`: Checks whether the process can talk to the firmware. If it can, it will return `ok`, otherwise empty.
+- `GET /variables`: Fetches current state of the Pod such as temperature.
+- `POST /alarm/<left/right>`: Sets the alarm settings. The request body must be JSON of the following form:
+  ```json
+  {"pl":50,"du":600,"tt":1700000000,"pi":"double"}
+  ```
+  - `pl` is the intensity of the vibrations as a percentage.
+  - `du` is presumed to be the maximum duration of the alarm in seconds.
+  - `tt` is the UNIX timestamp at which the alarm should be triggered.
+  - `pi` is the vibration pattern. `double` is the old-style "strong" vibration, `rise` is the newer gentler pattern.
+- `POST /alarm-clear`: Clears the alarm. Unclear if any request body is necessary.
+- `POST /settings`: Updates general settings. Request must be a JSON map. Only `lb` is known, which is the percentage intensity of the pod's LED.
+- `POST /temperature/<left/right>`: Sets the target temperature for the given side of the bed. Units are believed to be tenths of a degree, so 40 would be 4°C. Request body should be an integer encoded as plaintext. The unit will not switch on until a duration is also set.
+- `POST /temperature-duration/<left/right>`: Sets the number of seconds until the pod should shut off. Stock Eight Sleep logic is to periodically set this to 7200 and switch it off manually by changing it to 0 when the pod should switch off.
+- `POST /prime`: Presumably primes the pod. Takes a plaintext boolean (`true` or `false`) as the request body. It's unclear what this means.
+
+# Home Assistant
+
+The API can easily be integrated with Home Assistant using the `rest_command` integration:
+
+```yaml
+rest_command:
+  set_alarm:
+    url: http://<pod_ip>:8000/alarm/right
+    method: post
+    payload: '{"pl":{{strength}},"du":{{duration}},"tt":{{timestamp}},"pi":"{{pattern}}"}'
+  set_temp:
+    url: http://<pod_ip>:8000/temperature/right
+    method: post
+    payload: '{{temperature}}'
+  set_temp_duration:
+    url: http://<pod_ip>:8000/temperature-duration/right
+    method: post
+    payload: '{{duration}}'
+```
+
+The relevant settings can be passed as data. Here's an example automation that sets the temperature based on a calendar where the event name is the desired temperature:
+
+```yaml
+alias: Bed Calendar-driven Temperature
+description: ""
+trigger:
+  - platform: calendar
+    event: start
+    offset: "0:0:0"
+    entity_id: calendar.sleep
+condition:
+  - condition: template
+    value_template: "{{trigger.calendar_event.summary | is_number}}"
+action:
+  - repeat:
+      sequence:
+        - service: rest_command.set_temp
+          data:
+            temperature: "{{trigger.calendar_event.summary}}"
+        - service: rest_command.set_temp_duration
+          data:
+            duration: 7200
+        - delay:
+            hours: 0
+            minutes: 30
+            seconds: 0
+            milliseconds: 0
+      while:
+        - condition: template
+          value_template: "{{as_timestamp(trigger.calendar_event.end) > as_timestamp(now())}}"
+mode: single
+```
