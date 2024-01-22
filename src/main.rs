@@ -11,6 +11,7 @@ use std::{
 use cbor::{Encoder, ToCbor};
 use rustc_serialize::{json::Json, Encodable};
 
+// Just returns "ok" to show that communication with the firmware is working.
 #[get("/hello")]
 fn index(streamobj: &State<RwLock<UnixStream>>) -> String {
     let mut stream = streamobj.write().unwrap();
@@ -21,6 +22,17 @@ fn index(streamobj: &State<RwLock<UnixStream>>) -> String {
     return result;
 }
 
+// Gets current state. Example result:
+// tgHeatLevelR = 0
+// tgHeatLevelL = 0
+// heatTimeL = 0
+// heatLevelL = -100
+// heatTimeR = 0
+// heatLevelR = -100
+// sensorLabel = null
+// waterLevel = true
+// priming = false
+// settings = "BF61760162676C190190626772190190626C6200FF"
 #[get("/variables")]
 fn variables(streamobj: &State<RwLock<UnixStream>>) -> String {
     let mut stream = streamobj.write().unwrap();
@@ -31,6 +43,12 @@ fn variables(streamobj: &State<RwLock<UnixStream>>) -> String {
     return result;
 }
 
+// Example CBOR: a462706c18326264751902586274741a65af6af862706966646f75626c65
+// pl: Vibration intensity percentage
+// pi: Vibration pattern ("double" (heavy) or "rise" (gentle))?
+// du: Duration in seconds?
+// tt: Timestamp in unix epoch for alarm
+// Presumably thermal alarm is controlled with the temperature commands
 #[post("/alarm/<side>", data = "<data>")]
 fn alarm(side: &str, data: &str, streamobj: &State<RwLock<UnixStream>>) -> String {
     let command = match side {
@@ -65,6 +83,7 @@ fn alarm_clear(streamobj: &State<RwLock<UnixStream>>) -> String {
     return result;
 }
 
+// Example CBOR: a1626c6200, a1626c621837. Controls light intensity.
 #[post("/settings", data = "<data>")]
 fn settings(data: &str, streamobj: &State<RwLock<UnixStream>>) -> String {
     let jsondata = Json::from_str(data).unwrap();
@@ -81,6 +100,7 @@ fn settings(data: &str, streamobj: &State<RwLock<UnixStream>>) -> String {
     return result;
 }
 
+// Takes an integer number of seconds, presumably until the heat ends, e.g. 7200.
 #[post("/temperature-duration/<side>", data = "<data>")]
 fn temperature_duration(side: &str, data: &str, streamobj: &State<RwLock<UnixStream>>) -> String {
     let command = match side {
@@ -99,6 +119,7 @@ fn temperature_duration(side: &str, data: &str, streamobj: &State<RwLock<UnixStr
     return result;
 }
 
+// Takes a signed integer number. May represent tenths of degrees of heating/cooling. e.g. -40 = -4°C.
 #[post("/temperature/<side>", data = "<data>")]
 fn temperature(side: &str, data: &str, streamobj: &State<RwLock<UnixStream>>) -> String {
     let command = match side {
@@ -117,6 +138,7 @@ fn temperature(side: &str, data: &str, streamobj: &State<RwLock<UnixStream>>) ->
     return result;
 }
 
+// Takes a boolean string. Unclear what true/false mean exactly, maybe on/off?
 #[post("/prime")]
 fn prime(streamobj: &State<RwLock<UnixStream>>) -> String {
     let mut stream = streamobj.write().unwrap();
