@@ -223,47 +223,54 @@ async fn main() {
             match ostream {
                 Err(_) => continue,
                 Ok(mut stream) => {
-                    info!("Incoming TCP connection");
-                    let _ = stream.set_read_timeout(Some(Duration::new(60, 0)));
-                    let mut buf: [u8; 4096] = [0; 4096];
-                    let mut id = Vec::<u8>::new();
-                    loop {
-                        match stream.read(&mut buf) {
-                            Ok(size) => {
-                                if size == 0 {
-                                    info!("Connection closed");
-                                    break;
-                                }
-                                // info!("Received {} TCP bytes.", size);
-                                if size < 259 {
-                                    trace!("{}", hex::encode(&buf[0..size]));
-                                }
-                                if size == 80 && buf[0] == 0xA4 {
-                                    info!("Start of data sending");
-                                    let _ = stream.write(b"\xA2eprotocrawdpartgsession");
-                                }
-                                if size == 108 && buf[0] == 0xA4 {
-                                    id.copy_from_slice(&buf[size - 11..size - 8]);
-                                    info!("Incoming file stream {:02X?}", &id);
-                                }
-                                let endmarker = size > 8
-                                    && &buf[size - 8..size - 3] == b"ddata"
-                                    && buf[size - 1] == 0xFF;
-                                if endmarker || (size == 1 && buf[0] == 0xFF) {
-                                    info!("End of data sending for id {:02X?}", &id);
-                                    let mut outbuf: [u8; 28] = [0; 28];
-                                    outbuf[0..25].copy_from_slice(b"\xA3eprotocrawdpartebatchbid");
-                                    if id.len() == 3 {
-                                        outbuf[25..28].copy_from_slice(&id);
-                                    } else {
-                                        outbuf[25..28].copy_from_slice(&[0x19, 0x3c, 0x34]);
+                    thread::spawn(move || {
+                        info!("Incoming TCP connection");
+                        let _ = stream.set_read_timeout(Some(Duration::new(60, 0)));
+                        let mut buf: [u8; 4096] = [0; 4096];
+                        let mut id = Vec::<u8>::new();
+                        let mut received_bytes: usize = 0;
+                        loop {
+                            match stream.read(&mut buf) {
+                                Ok(size) => {
+                                    received_bytes += size;
+                                    if size == 0 {
+                                        info!("Connection closed after {} bytes", received_bytes);
+                                        break;
                                     }
-                                    let _ = stream.write(&outbuf);
+                                    // trace!("Received {} TCP bytes.", size);
+                                    if size < 259 {
+                                        trace!("{}", hex::encode(&buf[0..size]));
+                                    }
+                                    let start_prefix = b"\xA4eprotocrawdpartgsession";
+                                    if start_prefix == &buf[..start_prefix.len()] {
+                                        info!("Start of data sending");
+                                        let _ = stream.write(b"\xA2eprotocrawdpartgsession");
+                                    }
+                                    let file_id_prefix = b"\xa4eprotocrawdpartebatchbid";
+                                    if file_id_prefix == &buf[..file_id_prefix.len()] {
+                                        let id_size = size - 33;
+                                        let id_buf = &buf[25..(25 + id_size)];
+                                        id.resize(id_size, 0);
+                                        id.copy_from_slice(id_buf);
+                                        info!("Incoming file stream {:02X?}", &id);
+                                    }
+                                    let endmarker = size > 8
+                                        && &buf[size - 8..size - 3] == b"ddata"
+                                        && buf[size - 1] == 0xFF;
+                                    if endmarker || (size == 1 && buf[0] == 0xFF) {
+                                        info!("End of data sending for id {:02X?}", &id);
+                                        let prefix = b"\xA3eprotocrawdpartebatchbid";
+                                        let mut outbuf = Vec::<u8>::new();
+                                        outbuf.resize(prefix.len(), 0);
+                                        outbuf.copy_from_slice(prefix);
+                                        outbuf.append(&mut id);
+                                        let _ = stream.write(&outbuf);
+                                    }
                                 }
+                                Err(_) => break,
                             }
-                            Err(_) => break,
                         }
-                    }
+                    });
                 }
             }
         }
