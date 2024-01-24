@@ -1,0 +1,14 @@
+[Unit]
+Description=Ninesleep
+Requires=capybara.service
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+Environment="ROCKET_ADDRESS=0.0.0.0"
+Environment="RUST_LOG=info"
+Environment="ROCKET_LOG_LEVEL=normal"
+Environment="RUST_BACKTRACE=1"
+ExecStartPre=-rm /deviceinfo/dac.sock
