@@ -1,12 +1,14 @@
 #[macro_use]
 extern crate rocket;
+extern crate rustc_serialize;
 
-use cbor::{Encoder, ToCbor};
-use log::{info, trace};
+use cbor::{Cbor, Decoder, Encoder, ToCbor};
+use log::{info, warn};
 use rocket::State;
 use rustc_serialize::{json::Json, Encodable};
 use std::{
-    io::{Read, Write},
+    collections::HashMap,
+    io::{BufReader, BufWriter, Read, Write},
     net::TcpListener,
     os::unix::net::{UnixListener, UnixStream},
     sync::{Arc, RwLock},
@@ -192,6 +194,22 @@ fn prime(streamobj: &State<Arc<RwLock<Option<UnixStream>>>>) -> String {
     return result;
 }
 
+#[derive(Debug, RustcDecodable, RustcEncodable)]
+struct StreamItem {
+    part: String,
+    proto: String,
+    id: Option<u32>,
+    version: Option<String>,
+    dev: Option<String>,
+    stream: Option<Vec<u8>>,
+}
+
+#[derive(Debug, RustcDecodable, RustcEncodable)]
+struct BatchItem {
+    seq: u32,
+    data: Vec<u8>,
+}
+
 #[rocket::main]
 async fn main() {
     env_logger::init();
@@ -219,60 +237,93 @@ async fn main() {
 
     thread::spawn(|| {
         let listener = TcpListener::bind("127.0.0.1:1337").unwrap();
-        for ostream in listener.incoming() {
-            match ostream {
+        for stream in listener.incoming() {
+            let stream = match stream {
                 Err(_) => continue,
-                Ok(mut stream) => {
-                    thread::spawn(move || {
-                        info!("Incoming TCP connection");
-                        let _ = stream.set_read_timeout(Some(Duration::new(60, 0)));
-                        let mut buf: [u8; 4096] = [0; 4096];
-                        let mut id = Vec::<u8>::new();
-                        let mut received_bytes: usize = 0;
-                        loop {
-                            match stream.read(&mut buf) {
-                                Ok(size) => {
-                                    received_bytes += size;
-                                    if size == 0 {
-                                        info!("Connection closed after {} bytes", received_bytes);
-                                        break;
-                                    }
-                                    // trace!("Received {} TCP bytes.", size);
-                                    if size < 259 {
-                                        trace!("{}", hex::encode(&buf[0..size]));
-                                    }
-                                    let start_prefix = b"\xA4eprotocrawdpartgsession";
-                                    if start_prefix == &buf[..start_prefix.len()] {
-                                        info!("Start of data sending");
-                                        let _ = stream.write(b"\xA2eprotocrawdpartgsession");
-                                    }
-                                    let file_id_prefix = b"\xa4eprotocrawdpartebatchbid";
-                                    if file_id_prefix == &buf[..file_id_prefix.len()] {
-                                        let id_size = size - 33;
-                                        let id_buf = &buf[25..(25 + id_size)];
-                                        id.resize(id_size, 0);
-                                        id.copy_from_slice(id_buf);
-                                        info!("Incoming file stream {:02X?}", &id);
-                                    }
-                                    let endmarker = size > 8
-                                        && &buf[size - 8..size - 3] == b"ddata"
-                                        && buf[size - 1] == 0xFF;
-                                    if endmarker || (size == 1 && buf[0] == 0xFF) {
-                                        info!("End of data sending for id {:02X?}", &id);
-                                        let prefix = b"\xA3eprotocrawdpartebatchbid";
-                                        let mut outbuf = Vec::<u8>::new();
-                                        outbuf.resize(prefix.len(), 0);
-                                        outbuf.copy_from_slice(prefix);
-                                        outbuf.append(&mut id);
-                                        let _ = stream.write(&outbuf);
-                                    }
+                Ok(stream) => stream,
+            };
+            thread::spawn(move || {
+                info!("Incoming TCP connection");
+                let _ = stream.set_read_timeout(Some(Duration::new(60, 0)));
+                let reader = BufReader::new(&stream);
+                let mut writer = BufWriter::new(&stream);
+
+                let mut d = Decoder::from_reader(reader);
+                for item in d.decode::<StreamItem>() {
+                    let item = item.expect("failed to parse CBOR item");
+                    match item.part.as_str() {
+                        "session" => {
+                            info!("Session started: {:?}", item);
+                            let mut encoder = Encoder::from_memory();
+                            let res = StreamItem {
+                                part: "session".into(),
+                                proto: "raw".into(),
+                                id: None,
+                                version: None,
+                                dev: None,
+                                stream: None,
+                            };
+                            info!("Responding with {:?}", res);
+                            let _ = res.encode(&mut encoder);
+                            trace!("Response bytes {}", hex::encode(encoder.as_bytes()));
+                            let _ = writer.write(encoder.as_bytes());
+                            let _ = writer.flush();
+                        },
+                        "batch" => {
+                            let id = match item.id {
+                                Some(id) => id,
+                                None => {warn!("no id was present for batch"); continue;}
+                            };
+                            info!("Received batch {}", id);
+                            let mut encoder = Encoder::from_memory();
+                            let _ = StreamItem {
+                                id: Some(id),
+                                proto: "raw".into(),
+                                part: "batch".into(),
+                                dev: None,
+                                stream: None,
+                                version: None,
+                            }
+                            .encode(&mut encoder);
+                            let _ = writer.write(encoder.as_bytes());
+                            let _ = writer.flush();
+
+                            let datastream = match item.stream {
+                                Some(stream) => stream,
+                                None => {warn!("no stream in batch"); continue;},
+                            };
+                            let mut d = Decoder::from_bytes(datastream);
+                            for item in d.decode::<BatchItem>() {
+                                let item = match item {
+                                    Ok(item) => item,
+                                    Err(error) => {
+                                        warn!("failed to parse batch item: {:?}", error);
+                                        continue;
+                                    },
+                                };
+                                //info!("Batch item: {:?}", item);
+
+                                let mut d = Decoder::from_bytes(item.data);
+                                let seq = item.seq;
+                                for item in d.items() {
+                                    let item = match item {
+                                        Ok(item) => item,
+                                        Err(error) => {
+                                            warn!("failed to parse batch {} datum: {:?}", seq, error);
+                                            continue;
+                                        },
+                                    };
+                                    info!("Batch item {} datum: {:?}", seq, item);
                                 }
-                                Err(_) => break,
                             }
                         }
-                    });
+                        _ => {
+                            warn!("Unrecognized part {:?}", item.part);
+                            continue;
+                        }
+                    }
                 }
-            }
+            });
         }
     });
 
