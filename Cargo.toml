@@ -12,7 +12,7 @@ ciborium = "0.2.2"
 env_logger = "0.11.0"
 hex = "0.4.3"
 log = "0.4"
-rocket = "0.5.0"
+rocket = {version = "0.5.0", features = ["json"] }
 rustc-serialize = "0.3.25"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11.14"

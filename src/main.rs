@@ -58,14 +58,22 @@ fn variables(streamobj: &State<Arc<RwLock<Option<UnixStream>>>>) -> String {
     return result;
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct AlarmSettings {
+    pl: u8,
+    du: u16,
+    pi: String,
+    tt: u64,
+}
+
 // Example CBOR: a462706c18326264751902586274741a65af6af862706966646f75626c65
 // pl: Vibration intensity percentage
 // pi: Vibration pattern ("double" (heavy) or "rise" (gentle))?
 // du: Duration in seconds?
 // tt: Timestamp in unix epoch for alarm
 // Presumably thermal alarm is controlled with the temperature commands
-#[post("/alarm/<side>", data = "<data>")]
-fn alarm(side: &str, data: &str, streamobj: &State<Arc<RwLock<Option<UnixStream>>>>) -> String {
+#[post("/alarm/<side>", data = "<data>", format = "json")]
+fn alarm(side: &str, data: rocket::serde::json::Json<AlarmSettings>, streamobj: &State<Arc<RwLock<Option<UnixStream>>>>) -> String {
     let command = match side {
         "left" => 5,
         "right" => 6,
@@ -73,12 +81,11 @@ fn alarm(side: &str, data: &str, streamobj: &State<Arc<RwLock<Option<UnixStream>
             panic!("Invalid side requested")
         }
     };
-
-    let jsondata = Json::from_str(data).unwrap();
-    let cbordata = jsondata.to_cbor();
-    let mut cborencoder = Encoder::from_memory();
-    cbordata.encode(&mut cborencoder).unwrap();
-    let serializeddata = hex::encode(cborencoder.as_bytes());
+    
+    let data = data.into_inner();
+    let mut bincbor = Vec::<u8>::new();
+    ciborium::into_writer(&data, &mut bincbor).unwrap();
+    let serializeddata = hex::encode(bincbor);
 
     if streamobj.read().unwrap().is_none() {
         return "not connected".to_string();
