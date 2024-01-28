@@ -349,6 +349,9 @@ fn handle_batch(item: StreamItem, writer: &mut dyn Write) {
         writer,
     );
     let _ = writer.flush();
+    
+    let file = std::fs::File::create(format!("/root/{:08x}.cbor", id)).unwrap();
+    let _ = ciborium::into_writer(&item, &file);
 
     let datastream = match item.stream {
         Some(stream) => stream,
