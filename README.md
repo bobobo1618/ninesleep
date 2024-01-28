@@ -6,6 +6,20 @@ This repository contains a program intended to replace the `dac` process on an E
 
 Clearly, this project is not endorsed by Eight Sleep. You're responsible for anything you do with your pod.
 
+# Compatibility
+
+This has currently only been tested on a Pod 3 based on the [Variscite VAR-SOM-MX8M-MINI](https://www.variscite.com/product/system-on-module-som/cortex-a53-krait/var-som-mx8m-mini-nxp-i-mx8m-mini/).
+
+Example board: 
+
+![picture of a Pod 3 circuit board](doc_img/board.jpg)
+
+Example hardware info from Eight Sleep app: 
+
+![screenshot of the hardware info section of the Eight Sleep app](doc_img/hwinfo.jpg)
+
+# Instructions
+
 To use:
 - Power off your pod
 - Remove the fan grille on the back of the Pod 3
