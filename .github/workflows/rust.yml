@@ -20,6 +20,11 @@ jobs:
 
       - name: Setup Cache
         uses: Swatinem/rust-cache@v2
+
+      - name: Cache Docker images.
+        uses: ScribeMD/docker-cache@0.3.7
+        with:
+          key: docker-${{ runner.os }}-${{ hashFiles(paths) }}
  
       # Only install cross if we need it
       # Install via cargo-binstall which I found faster
