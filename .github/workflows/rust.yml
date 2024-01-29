@@ -10,7 +10,7 @@ jobs:
           - name: linux-amd64
             runner: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            command: cargo
+            command: cross
     steps:
       - name: Checkout
         uses: actions/checkout@v3
