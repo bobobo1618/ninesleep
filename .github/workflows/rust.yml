@@ -1,0 +1,31 @@
+# Workflow from https://reemus.dev/tldr/rust-cross-compilation-github-actions
+name: Build
+on: [push]
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - name: linux-amd64
+            runner: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            command: cargo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+ 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+ 
+      # Only install cross if we need it
+      # Install via cargo-binstall which I found faster
+      - name: Install Cross
+        if: matrix.command == 'cross'
+        shell: bash
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall --no-confirm cross
+ 
+      - name: Build Binary
+        run: ${{ matrix.command }} build --verbose --locked --release --target ${{ matrix.target }}
