@@ -17,6 +17,9 @@ jobs:
  
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Cache
+        uses: Swatinem/rust-cache@v2
  
       # Only install cross if we need it
       # Install via cargo-binstall which I found faster
